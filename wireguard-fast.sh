@@ -16,17 +16,44 @@ fi
 read -e -p "# of clients? [Betwen 1 and 253] " -i 5 NUM
 read -e -p "Server hostname/IP? " -i $(curl -s ifconfig.me) SERVER
 
+read -e -p "Specify VPN network address e.g 10.40.40.1-" SUBNET_IP
+echo You enterned $SUBNET_IP
+read -p "Continue? (Y/N): " confirm && [[ $confirm == [yY] || $confirm == [yY][eE][sS] ]] || exit 1
+if [[ $SUBNET_IP =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+	oct1=$(echo ${SUBNET_IP} | tr "." " " | awk '{ print $1 }')
+	oct2=$(echo ${SUBNET_IP} | tr "." " " | awk '{ print $2 }')
+	oct3=$(echo ${SUBNET_IP} | tr "." " " | awk '{ print $3 }')
+	oct4=$(echo ${SUBNET_IP} | tr "." " " | awk '{ print $4 }')
+	SUBNET_IPADDRESS=$oct1.$oct2.$oct3.1
+#	echo "Subnet Ipaddress is $SUBNET_IPADDRESS"
+else
+	echo "fail"
+fi
+
+echo "Updating system........"
+apt-get update -y
+echo "........system update done"
+
+echo "Installing wireguard........"
 apt-get install -qq wireguard zip
+echo ".......wireguard installation done"
+
+echo "Setting up system ip forwarding....."
 if [ `sysctl net.ipv4.ip_forward -b` == 0 ]; then
   echo "net.ipv4.ip_forward=1" >> /etc/sysctl.d/99-sysctl.conf
   sysctl -w net.ipv4.ip_forward=1
 fi
+echo "......done"
+
+echo "Generating server key......"
 wg genkey | tee server.key | wg pubkey > server.pub
+echo "......done"
+
 
 INTER=$(ip -o -4 route show to default | awk '{print $5}')
 cat > /etc/wireguard/wg0.conf << EOF
 [Interface]
-Address = 10.42.42.1/24
+Address = $SUBNET_IPADDRESS/24
 PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o $INTER -j MASQUERADE
 PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o $INTER -j MASQUERADE
 ListenPort = 51820
@@ -38,7 +65,7 @@ wg
 
 # IP 1 is reserved for server
 NUM=$(($NUM + 1))
-for i in $(seq 2 $NUM); do . ./_add-client.sh $i; done
+for i in $(seq 2 $NUM); do . ./_add-client.sh $i $SUBNET_IPADDRESS; done
 
 ufw allow 51820/udp
 systemctl enable wg-quick@wg0
@@ -50,7 +77,7 @@ chown $user clients.zip
 
 cat > add_client.sh << EOF
 #!/usr/bin/env bash
-SERVER=$SERVER ROUTE_ALL=$ROUTE_ALL ./add-client.sh $1
+SUBNET_IP=$SUBNET_IPADDRESS SERVER=$SERVER ROUTE_ALL=$ROUTE_ALL ./add-client.sh $1
 EOF
 
 if [ $SUDO_USER ]; then user=$SUDO_USER
