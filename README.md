@@ -1,3 +1,7 @@
+# wireguard-fast Automation 
+
+have modified the orignal file to use custome ip range while installing 
+
 # wireguard-fast
 
 > Simplified installation of a [WireGuard](https://www.wireguard.com/) server for Ubuntu (tested on Ubuntu 20.04; should work on 18.04 as well
